@@ -11,6 +11,7 @@ NULL_ID = 0
 OOV_ID = 1
 SOS_ID = 2
 EOS_ID = 3
+keep_prob = 0.7
 raw_train_file = './data/zhidao.train.json'
 train_file = './generate/train.txt'
 raw_dev_file = './data/zhidao.dev.json'

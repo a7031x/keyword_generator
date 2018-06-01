@@ -44,6 +44,17 @@ class Feeder(object):
         return [self.dataset.qi2w[id] for id in ids]
 
 
+    def label_qa(self, sent):
+        qv = [0] * len(self.dataset.qw2i)
+        av = [0] * len(self.dataset.aw2i)
+        for word in sent:
+            if word in self.dataset.qw2i:
+                qv[self.dataset.qw2i[word]] = 1
+            if word in self.dataset.aw2i:
+                av[self.dataset.aw2i[word]] = 1
+        return qv, av
+
+
 class TrainFeeder(Feeder):
     def __init__(self, dataset):
         super(TrainFeeder, self).__init__(dataset)
@@ -66,8 +77,10 @@ class TrainFeeder(Feeder):
         size = min(self.size - self.cursor, batch_size)
         batch = self.data[self.cursor:self.cursor+size]
         q, a = zip(*batch)
-        q, a = [self.qsent_to_id(x) for x in q], [self.asent_to_id(x) for x in a]
-        return align2d(q), align2d(a)
+        _, aids = [self.qsent_to_id(x) for x in q], [self.asent_to_id(x) for x in a]
+        qa_vector = [self.label_qa(x) for x in q]
+        q_vector, a_vector = zip(*qa_vector)
+        return align2d(aids), q_vector, a_vector, config.keep_prob
 
 
 def load_vocab(filename, count):
@@ -116,12 +129,17 @@ def align3d(values, fill=0):
         row += [([fill] * maxlen0)] * (maxlen1 - len(row))
     return values
 
+
 if __name__ == '__main__':
     dataset = Dataset()
     feeder = TrainFeeder(dataset)
     feeder.prepare('dev')
-    q, a = feeder.next()
+    aids, q, a, keep_prob = feeder.next()
     for question, answer in zip(q, a):
         print('--------------------')
-        print(feeder.qids_to_sent(question))
-        print(feeder.aids_to_sent(answer))
+        qw = [id for id, flag in enumerate(question) if flag == 1]
+        aw = [id for id, flag in enumerate(answer) if flag == 1]
+        qw = feeder.qids_to_sent(qw)
+        aw = feeder.aids_to_sent(aw)
+        print('question', qw)
+        print('answer', aw)

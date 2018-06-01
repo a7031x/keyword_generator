@@ -21,7 +21,7 @@ class Model(object):
         self.create_embeddings()
         self.create_encoder()
         self.create_decoder()
-        self.create_attention()
+        self.create_loss()
 
 
     def create_inputs(self):
@@ -57,7 +57,23 @@ class Model(object):
 
     def create_decoder(self):
         with tf.name_scope('decoder'):
-            
+            self.ws_answer = tf.get_variable(name='ws_answer', shape=[config.encoder_hidden_dim*2, self.answer_vocab_size])
+            self.ws_question = tf.get_variable(name='ws_question', shape=[config.encoder_hidden_dim*2, self.question_vocab_size])
+            self.encoding_sum = tf.reduce_sum(self.encoding, axis=1)
+            self.answer_logit = tf.matmul(self.encoding_sum, self.ws_answer)
+            self.question_logit = tf.matmul(self.encoding_sum, self.ws_question)
+
+
+    def create_loss(self):
+        with tf.name_scope('loss'):
+            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, None)
+            self.question_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question, None)
+            self.answer_loss = tf.reduce_sum(self.answer_loss)
+            self.question_loss = tf.reduce_sum(self.question_loss)
+            self.loss = self.answer_loss + self.question_loss
+            tf.summary.scalar('answer_loss', self.answer_loss)
+            tf.summary.scalar('question_loss', self.question_loss)
+            tf.summary.scalar('loss', self.loss)
 
 
     def create_attention(self):
@@ -72,4 +88,4 @@ class Model(object):
 
 
 if __name__ == '__main__':
-    model = Model(10000, None)
+    model = Model(10000, 1000, None)

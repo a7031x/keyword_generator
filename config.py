@@ -21,4 +21,4 @@ question_vocab_file = './generate/vocab.question.txt'
 answer_vocab_file = './generate/vocab.answer.txt'
 stopwords_file = './data/stopwords.txt'
 answer_vocab_size = 200000
-question_vocab_size = 5100
+question_vocab_size = 10000

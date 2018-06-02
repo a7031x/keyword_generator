@@ -2,13 +2,14 @@ import tensorflow as tf
 import utils
 import func
 import config
+import os
 
 class Model(object):
-    def __init__(self, question_vocab_size, answer_vocab_size, ckpt_folder, name='model'):
+    def __init__(self, ckpt_folder, name='model'):
         self.name = name
         self.ckpt_folder = ckpt_folder
-        self.question_vocab_size = question_vocab_size
-        self.answer_vocab_size = answer_vocab_size
+        self.question_vocab_size = config.question_vocab_size
+        self.answer_vocab_size = config.answer_vocab_size
         if self.ckpt_folder is not None:
             utils.mkdir(self.ckpt_folder)
         initializer = tf.random_uniform_initializer(-0.05, 0.05)
@@ -22,6 +23,12 @@ class Model(object):
         self.create_encoder()
         self.create_decoder()
         self.create_loss()
+        self.create_optimizer()
+        self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=2)
+        total, vc = self.number_parameters()
+        print('trainable parameters: {}'.format(total))
+        for name, count in vc.items():
+            print('{}: {}'.format(name, count))
 
 
     def create_inputs(self):
@@ -32,6 +39,18 @@ class Model(object):
             self.mask, self.length = func.tensor_to_mask(self.input_word)
             self.input_label_answer = tf.placeholder(tf.float32, shape=[None, self.answer_vocab_size], name='label_answer')
             self.input_label_question = tf.placeholder(tf.float32, shape=[None, self.question_vocab_size], name='label_question')
+
+
+    def feed(self, aids, qv=None, av=None, keep_prob=1.0):
+        feed_dict = {
+            self.input_word: aids,
+            self.input_keep_prob: keep_prob
+        }
+        if qv is not None:
+            feed_dict[self.input_label_question] = qv
+        if av is not None:
+            feed_dict[self.input_label_answer] = av
+        return feed_dict
 
 
     def create_embeddings(self):
@@ -87,5 +106,46 @@ class Model(object):
             self.ws_tanh_wt = tf.einsum('bik,kj->bij', tf.tanh(self.wt_h), self.ws)
 
 
+    def create_optimizer(self):
+        self.global_step = tf.Variable(0, trainable=False)
+        self.opt = tf.train.AdamOptimizer(learning_rate=1E-3)
+        grads = self.opt.compute_gradients(self.loss)
+        gradients, variables = zip(*grads)
+        capped_grads, _ = tf.clip_by_global_norm(gradients, 5.0)
+        self.optimizer = self.opt.apply_gradients(zip(capped_grads, variables), global_step=self.global_step)
+
+
+    def restore(self, sess):
+        ckpt = tf.train.get_checkpoint_state(self.ckpt_folder)
+        if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
+            with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+                self.saver.restore(sess, ckpt.model_checkpoint_path)
+                print('MODEL LOADED.')
+        else:
+            sess.run(tf.global_variables_initializer())
+
+
+    def save(self, sess):
+        self.saver.save(sess, os.path.join(self.ckpt_folder, 'model.ckpt'))
+
+
+    def summarize(self, writer):
+        self.summary = tf.summary.merge_all()
+
+
+    def number_parameters(self):
+        total_parameters = 0
+        vc = {}
+        for variable in tf.trainable_variables():
+            # shape is an array of tf.Dimension
+            shape = variable.get_shape()
+            variable_parameters = 1
+            for dim in shape:
+                variable_parameters *= dim.value
+            total_parameters += variable_parameters
+            vc[variable.name] = variable_parameters
+        return total_parameters, vc
+
+
 if __name__ == '__main__':
-    model = Model(10000, 1000, None)
+    model = Model(None)

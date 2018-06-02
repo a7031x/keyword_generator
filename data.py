@@ -1,12 +1,13 @@
 import config
 import utils
+import random
 
 class Dataset(object):
     def __init__(self):
         self.aw2i, self.ai2w, self.ai2c = load_vocab(config.answer_vocab_file, config.answer_vocab_size)
         self.qw2i, self.qi2w, self.qi2c = load_vocab(config.question_vocab_file, config.question_vocab_size)        
-        self.train_set = load_qa(config.train_file)
-        self.dev_set = load_qa(config.dev_file)
+        self.train_set = load_qa(config.train_file, config.answer_limit)
+        self.dev_set = load_qa(config.dev_file, config.answer_limit)
 
 
 class Feeder(object):
@@ -63,8 +64,11 @@ class TrainFeeder(Feeder):
     def prepare(self, type):
         if type == 'train':
             self.data = self.dataset.train_set
+            self.keep_prob = 0.7
+            random.shuffle(self.data)
         elif type == 'dev':
             self.data = self.dataset.dev_set
+            self.keep_prob = 1.0
         self.cursor = 0
         self.size = len(self.data)
 
@@ -80,7 +84,7 @@ class TrainFeeder(Feeder):
         _, aids = [self.qsent_to_id(x) for x in q], [self.asent_to_id(x) for x in a]
         qa_vector = [self.label_qa(x) for x in q]
         q_vector, a_vector = zip(*qa_vector)
-        return align2d(aids), q_vector, a_vector, config.keep_prob
+        return align2d(aids), q_vector, a_vector, self.keep_prob
 
 
 def load_vocab(filename, count):
@@ -90,6 +94,7 @@ def load_vocab(filename, count):
         config.SOS: config.SOS_ID,
         config.EOS: config.EOS_ID
     }
+    count -= len(w2i)
     i2c = {}
     all_entries = list(utils.read_all_lines(filename))
     for line in all_entries[:count]:
@@ -102,12 +107,14 @@ def load_vocab(filename, count):
     return w2i, i2w, i2c
 
 
-def load_qa(filename):
+def load_qa(filename, answer_limit=0):
     q = None
     qas = []
     for line in utils.read_all_lines(filename):
         if q is not None:
-            qas.append((q.split(' '), line.split(' ')))
+            answer = line.split(' ')
+            if answer_limit == 0 or len(answer) <= answer_limit:
+                qas.append((q.split(' '), answer))
             q = None
         else:
             q = line

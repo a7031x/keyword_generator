@@ -1,3 +1,5 @@
+checkpoint_folder = './checkpoint'
+log_folder = './log'
 embedding_dim = 300
 encoder_hidden_dim = 150
 decoder_hidden_dim = 150
@@ -21,5 +23,6 @@ test_file = './generate/test.json'
 question_vocab_file = './generate/vocab.question.txt'
 answer_vocab_file = './generate/vocab.answer.txt'
 stopwords_file = './data/stopwords.txt'
-answer_vocab_size = 200000
-question_vocab_size = 10000
+answer_limit = 400
+answer_vocab_size = 5000
+question_vocab_size = 1000

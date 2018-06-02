@@ -79,19 +79,21 @@ class Model(object):
             self.ws_answer = tf.get_variable(name='ws_answer', shape=[config.encoder_hidden_dim*2, self.answer_vocab_size])
             self.ws_question = tf.get_variable(name='ws_question', shape=[config.encoder_hidden_dim*2, self.question_vocab_size])
             self.encoding_sum = tf.reduce_sum(self.encoding, axis=1)
-            self.answer_logit = tf.matmul(self.encoding_sum, self.ws_answer)
-            self.question_logit = tf.matmul(self.encoding_sum, self.ws_question)
+            self.answer_logit = tf.clip_by_value(tf.matmul(self.encoding_sum, self.ws_answer), -10, 10, name='answer_logit')
+            self.question_logit = tf.clip_by_value(tf.matmul(self.encoding_sum, self.ws_question), -10, 10, name='question_logit')
+            tf.summary.histogram('decoder/answer_logit', self.answer_logit)
+            tf.summary.histogram('decoder/question_logit', self.question_logit)
 
 
     def create_loss(self):
         with tf.name_scope('loss'):
-            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, None)
-            self.question_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question, None)
-            self.answer_loss = tf.reduce_sum(self.answer_loss)
-            self.question_loss = tf.reduce_sum(self.question_loss)
-            self.loss = self.answer_loss + self.question_loss
-            tf.summary.scalar('answer_loss', self.answer_loss)
-            tf.summary.scalar('question_loss', self.question_loss)
+            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, None, pos_weight=5.0)
+            self.question_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question, None, pos_weight=5.0)
+            self.answer_loss_sum = tf.reduce_sum(self.answer_loss)
+            self.question_loss_sum = tf.reduce_sum(self.question_loss)
+            self.loss = self.answer_loss_sum + self.question_loss_sum
+            tf.summary.scalar('answer_loss', self.answer_loss_sum)
+            tf.summary.scalar('question_loss', self.question_loss_sum)
             tf.summary.scalar('loss', self.loss)
 
 

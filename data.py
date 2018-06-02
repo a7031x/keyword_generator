@@ -100,9 +100,10 @@ def load_vocab(filename, count):
         config.SOS: config.SOS_ID,
         config.EOS: config.EOS_ID
     }
-    count -= len(w2i)
     i2c = {}
     all_entries = list(utils.read_all_lines(filename))
+    count -= len(w2i)
+    count = min(count, len(all_entries))
     for line in all_entries[:count]:
         word, freq = line.rsplit(':', 1)
         id = len(w2i)

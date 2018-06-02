@@ -88,8 +88,8 @@ class Model(object):
 
     def create_loss(self):
         with tf.name_scope('loss'):
-            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, self.mask)
-            self.question_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question, None, pos_weight=2.0)
+            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, self.mask, pos_weight=3.0)
+            self.question_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question, None, pos_weight=3.0)
             self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
             self.question_loss = tf.reduce_mean(tf.reduce_sum(self.question_loss, -1))
             self.loss = self.answer_loss + self.question_loss

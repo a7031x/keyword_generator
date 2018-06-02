@@ -37,19 +37,19 @@ class Model(object):
             self.input_keep_prob = tf.placeholder(tf.float32, name='keep_prob')
             self.batch_size = tf.shape(self.input_word)[0]
             self.mask, self.length = func.tensor_to_mask(self.input_word)
-            self.input_label_answer = tf.placeholder(tf.float32, shape=[None, self.answer_vocab_size], name='label_answer')
+            self.input_label_answer = tf.placeholder(tf.float32, shape=[None, None], name='label_answer')
             self.input_label_question = tf.placeholder(tf.float32, shape=[None, self.question_vocab_size], name='label_question')
 
 
-    def feed(self, aids, qv=None, av=None, keep_prob=1.0):
+    def feed(self, aids, qv=None, st=None, keep_prob=1.0):
         feed_dict = {
             self.input_word: aids,
             self.input_keep_prob: keep_prob
         }
         if qv is not None:
             feed_dict[self.input_label_question] = qv
-        if av is not None:
-            feed_dict[self.input_label_answer] = av
+        if st is not None:
+            feed_dict[self.input_label_answer] = st
         return feed_dict
 
 
@@ -76,10 +76,11 @@ class Model(object):
 
     def create_decoder(self):
         with tf.name_scope('decoder'):
-            self.ws_answer = tf.get_variable(name='ws_answer', shape=[config.encoder_hidden_dim*2, self.answer_vocab_size])
+            self.ws_answer = tf.get_variable(name='ws_answer', shape=[config.encoder_hidden_dim*2, 1])
             self.ws_question = tf.get_variable(name='ws_question', shape=[config.encoder_hidden_dim*2, self.question_vocab_size])
             self.encoding_sum = tf.reduce_sum(self.encoding, axis=1)
-            self.answer_logit = tf.clip_by_value(tf.matmul(self.encoding_sum, self.ws_answer), -10, 10, name='answer_logit')
+            self.answer_logit = tf.einsum('aij,jk->aik', self.encoding, self.ws_answer)
+            self.answer_logit = tf.squeeze(self.answer_logit, [-1], name='answer_logit')
             self.question_logit = tf.clip_by_value(tf.matmul(self.encoding_sum, self.ws_question), -10, 10, name='question_logit')
             tf.summary.histogram('decoder/answer_logit', self.answer_logit)
             tf.summary.histogram('decoder/question_logit', self.question_logit)
@@ -87,13 +88,13 @@ class Model(object):
 
     def create_loss(self):
         with tf.name_scope('loss'):
-            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, None, pos_weight=5.0)
-            self.question_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question, None, pos_weight=5.0)
-            self.answer_loss_sum = tf.reduce_sum(self.answer_loss)
-            self.question_loss_sum = tf.reduce_sum(self.question_loss)
-            self.loss = self.answer_loss_sum + self.question_loss_sum
-            tf.summary.scalar('answer_loss', self.answer_loss_sum)
-            tf.summary.scalar('question_loss', self.question_loss_sum)
+            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, self.mask)
+            self.question_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question, None, pos_weight=2.0)
+            self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
+            self.question_loss = tf.reduce_mean(tf.reduce_sum(self.question_loss, -1))
+            self.loss = self.answer_loss + self.question_loss
+            tf.summary.scalar('answer_loss', self.answer_loss)
+            tf.summary.scalar('question_loss', self.question_loss)
             tf.summary.scalar('loss', self.loss)
 
 

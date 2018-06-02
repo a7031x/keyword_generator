@@ -2,32 +2,41 @@ import tensorflow as tf
 import config
 import utils
 import numpy as np
+from evaluator import Evaluator
 from data import TrainFeeder, Dataset
 from model import Model
 
 
-def run_epoch(type, sess, model, feeder, writer):
-    feeder.prepare(type)
+def run_epoch(itr, sess, model, feeder, evaluator, writer):
+    feeder.prepare('train')
+    nbatch = 0
     while not feeder.eof():
-        aids, qv, av, kb = feeder.next(32)
-        feed = model.feed(aids, qv, av, kb)
+        aids, qv, st, kb = feeder.next()
+        feed = model.feed(aids, qv, st, kb)
         summary, _, loss, global_step = sess.run([model.summary, model.optimizer, model.loss, model.global_step], feed_dict=feed)
-        model.save(sess)
         writer.add_summary(summary, global_step=global_step)
-        print('loss: {:>.4F}'.format(loss))
+        print('iteration {}, {}/{}, loss: {:>.4F}'.format(itr, feeder.cursor, feeder.size, loss))
+        nbatch += 1
+        if nbatch % 10 == 0:
+            loss = evaluator.evaluate(sess, model)
+            print('dev loss: {:>.4F}----'.format(loss))
+            model.save(sess)
 
 
 def train(auto_stop):
     model = Model(config.checkpoint_folder)
     dataset = Dataset()
     feeder = TrainFeeder(dataset)
+    evaluator = Evaluator(dataset)
     with tf.Session() as sess:
         model.restore(sess)
         #utils.rmdir(config.log_folder)
         writer = tf.summary.FileWriter(config.log_folder, sess.graph)
         model.summarize(writer)
+        itr = 0
         while True:
-            run_epoch('train', sess, model, feeder, writer)
+            itr += 1
+            run_epoch(itr, sess, model, feeder, evaluator, writer)
 
 
 train(False)

@@ -56,6 +56,10 @@ class Feeder(object):
         return qv, av
 
 
+    def seq_tag(self, question, answer):
+        return [1 if word in question else 0 for word in answer]
+
+
 class TrainFeeder(Feeder):
     def __init__(self, dataset):
         super(TrainFeeder, self).__init__(dataset)
@@ -83,8 +87,10 @@ class TrainFeeder(Feeder):
         q, a = zip(*batch)
         _, aids = [self.qsent_to_id(x) for x in q], [self.asent_to_id(x) for x in a]
         qa_vector = [self.label_qa(x) for x in q]
-        q_vector, a_vector = zip(*qa_vector)
-        return align2d(aids), q_vector, a_vector, self.keep_prob
+        q_vector, _ = zip(*qa_vector)
+        seq_tag = [self.seq_tag(question, answer) for question,answer in zip(q,a)]
+        self.cursor += size
+        return align2d(aids), q_vector, align2d(seq_tag), self.keep_prob
 
 
 def load_vocab(filename, count):

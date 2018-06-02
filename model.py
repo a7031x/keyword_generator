@@ -23,6 +23,8 @@ class Model(object):
         self.create_encoder()
         self.create_self_match()
         self.create_decoder()
+        self.create_seq_decoder()
+        self.create_attention()
         self.create_loss()
         self.create_optimizer()
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=2)
@@ -39,18 +41,22 @@ class Model(object):
             self.batch_size = tf.shape(self.input_word)[0]
             self.mask, self.length = func.tensor_to_mask(self.input_word)
             self.input_label_answer = tf.placeholder(tf.float32, shape=[None, None], name='label_answer')
-            self.input_label_question = tf.placeholder(tf.float32, shape=[None, self.question_vocab_size], name='label_question')
+            self.input_label_question = tf.placeholder(tf.int32, shape=[None, None], name='label_question')
+            self.input_label_question_vector = tf.placeholder(tf.float32, shape=[None, self.question_vocab_size], name='label_question_vector')
+            self.question_mask, self.question_len = func.tensor_to_mask(self.input_label_question)
 
 
-    def feed(self, aids, qv=None, st=None, keep_prob=1.0):
+    def feed(self, aids, qids=None, qv=None, st=None, keep_prob=1.0):
         feed_dict = {
             self.input_word: aids,
             self.input_keep_prob: keep_prob
         }
         if qv is not None:
-            feed_dict[self.input_label_question] = qv
+            feed_dict[self.input_label_question_vector] = qv
         if st is not None:
             feed_dict[self.input_label_answer] = st
+        if qids is not None:
+            feed_dict[self.input_label_question] = qids
         return feed_dict
 
 
@@ -76,7 +82,7 @@ class Model(object):
 
 
     def create_self_match(self):
-        with tf.name_scope('self_match'):
+        with tf.name_scope('self_match'), tf.variable_scope('self_match'):
             self_att = func.dot_attention(self.encoding, self.encoding, self.mask, config.encoder_hidden_dim, self.input_keep_prob)
             self.self_match, _ = func.rnn('gru', self_att, self.length, config.encoder_hidden_dim, 1, self.input_keep_prob)
             tf.summary.histogram('attention/self_match', self.self_match)
@@ -94,27 +100,61 @@ class Model(object):
             tf.summary.histogram('decoder/question_logit', self.question_logit)
 
 
-    def create_loss(self):
-        with tf.name_scope('loss'):
-            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, self.mask, pos_weight=3.0)
-            self.question_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question, None, pos_weight=3.0)
-            self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
-            self.question_loss = tf.reduce_mean(tf.reduce_sum(self.question_loss, -1))
-            self.loss = self.answer_loss + self.question_loss
-            tf.summary.scalar('answer_loss', self.answer_loss)
-            tf.summary.scalar('question_loss', self.question_loss)
-            tf.summary.scalar('loss', self.loss)
+    def create_seq_decoder(self):
+        with tf.name_scope('seq_decoder'):
+            init_state = func.dense(self.self_match, config.decoder_hidden_dim*2, scope='seq_decoder_init_state')
+            init_state = tf.reduce_sum(init_state, 1)
+            initial_state = tf.contrib.rnn.LSTMStateTuple(init_state[:,:config.decoder_hidden_dim], init_state[:,config.decoder_hidden_dim:])
+            output_sequence, self.decoder_length = func.rnn_decode(
+                'lstm', self.batch_size, config.decoder_hidden_dim, self.question_embedding,
+                config.SOS_ID, config.EOS_ID, (initial_state,), config.max_question_len)
+            self.decoder_hidden = tf.identity(output_sequence.rnn_output, 'decoder_hidden')
+            tf.summary.histogram('seq_decoder/hidden', self.decoder_hidden)
 
 
     def create_attention(self):
-        with tf.name_scope('attention'):
-            self.ct = func.dot_attention(self.decoder_h, self.passage_enc, self.passage_mask, config.dot_attention_dim, self.input_keep_prob)
-            self.combined_h = tf.concat([self.decoder_h, self.ct], -1, name='combined_h')#[batch, question_len, 450]           
+        with tf.name_scope('qa_attention'), tf.variable_scope('qa_attention'):
+            self.ct = func.dot_attention(self.decoder_hidden, self.self_match, self.mask, config.dot_attention_dim, self.input_keep_prob)
+            self.combined_h = tf.concat([self.decoder_hidden, self.ct], -1, name='combined_h')#[batch, question_len, 450]           
             self.wt = tf.get_variable('wt', shape=[config.max_question_len, self.combined_h.get_shape()[-1], config.decoder_hidden_dim])
-            self.ws = tf.get_variable('ws', shape=[config.decoder_hidden_dim, self.vocab_size])
-            question_len = tf.shape(self.combined_h)[1]
-            self.wt_h = tf.einsum('bij,ijk->bik', self.combined_h, self.wt[:question_len,:,:], name='wt_h')
+            self.ws = tf.get_variable('ws', shape=[config.decoder_hidden_dim, self.question_vocab_size])
+            self.decoder_question_len = tf.shape(self.combined_h)[1]
+            self.wt_h = tf.einsum('bij,ijk->bik', self.combined_h, self.wt[:self.decoder_question_len,:,:], name='wt_h')
             self.ws_tanh_wt = tf.einsum('bik,kj->bij', tf.tanh(self.wt_h), self.ws)
+            #self.question_sequence_logit = func.softmax(self.ws_tanh_wt, tf.expand_dims(self.question_mask, -1))
+            self.question_sequence_logit = tf.identity(self.ws_tanh_wt, name='question_sequence_logit')
+            tf.summary.histogram('question_sequence_logit', self.question_sequence_logit)
+
+
+    def create_loss(self):
+        with tf.name_scope('loss'):
+            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, self.mask, pos_weight=3.0)
+            self.question_vector_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question_vector, None, pos_weight=3.0)
+            self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
+            self.question_vector_loss = tf.reduce_mean(tf.reduce_sum(self.question_vector_loss, -1))
+
+            self.input_question_len = tf.shape(self.input_label_question)[1]
+            self.final_question_len = tf.maximum(self.decoder_question_len, self.input_question_len)
+            self.final_question_mask = tf.sequence_mask(self.final_question_len, dtype=tf.float32)
+            sequence_label = tf.concat(
+                [self.input_label_question, tf.zeros(shape=[self.batch_size, self.final_question_len-self.input_question_len], dtype=tf.int32)],
+                axis=1)
+            sequence_logit = tf.concat(
+                [self.question_sequence_logit,
+                 tf.zeros(shape=[self.batch_size, self.final_question_len-self.decoder_question_len, self.question_vocab_size])],
+                 axis=1)
+            self.question_sequence_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                logits=sequence_logit,
+                labels=sequence_label) * self.final_question_mask
+            minimum_len = tf.cast(tf.minimum(self.decoder_question_len, self.question_len), tf.float32)
+            self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1) / minimum_len
+            self.question_sequence_loss = tf.reduce_mean(self.question_sequence_loss)
+            
+            self.loss = self.answer_loss + self.question_vector_loss + self.question_sequence_loss
+            tf.summary.scalar('answer_loss', self.answer_loss)
+            tf.summary.scalar('question_vector_loss', self.question_vector_loss)
+            tf.summary.scalar('question_sequence_loss', self.question_sequence_loss)
+            tf.summary.scalar('loss', self.loss)
 
 
     def create_optimizer(self):

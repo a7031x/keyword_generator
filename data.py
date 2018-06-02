@@ -85,12 +85,12 @@ class TrainFeeder(Feeder):
         size = min(self.size - self.cursor, batch_size)
         batch = self.data[self.cursor:self.cursor+size]
         q, a = zip(*batch)
-        _, aids = [self.qsent_to_id(x) for x in q], [self.asent_to_id(x) for x in a]
+        qids, aids = [self.qsent_to_id(x) for x in q], [self.asent_to_id(x) for x in a]
         qa_vector = [self.label_qa(x) for x in q]
         q_vector, _ = zip(*qa_vector)
         seq_tag = [self.seq_tag(question, answer) for question,answer in zip(q,a)]
         self.cursor += size
-        return align2d(aids), q_vector, align2d(seq_tag), self.keep_prob
+        return align2d(aids), align2d(qids), q_vector, align2d(seq_tag), self.keep_prob
 
 
 def load_vocab(filename, count):

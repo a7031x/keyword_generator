@@ -55,8 +55,8 @@ class Evaluator(TrainFeeder):
 
     def evaluate(self, sess, model):
         self.prepare('dev')
-        aids, qv, st, kb = self.next(64)
-        feed = model.feed(aids, qv, st, kb)
+        aids, qids, qv, st, kb = self.next(64)
+        feed = model.feed(aids, qids, qv, st, kb)
         loss = sess.run(model.loss, feed_dict=feed)
         return loss
 

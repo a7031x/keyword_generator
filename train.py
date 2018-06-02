@@ -11,8 +11,8 @@ def run_epoch(itr, sess, model, feeder, evaluator, writer):
     feeder.prepare('train')
     nbatch = 0
     while not feeder.eof():
-        aids, qv, st, kb = feeder.next()
-        feed = model.feed(aids, qv, st, kb)
+        aids, qids, qv, st, kb = feeder.next()
+        feed = model.feed(aids, qids, qv, st, kb)
         summary, _, loss, global_step = sess.run([model.summary, model.optimizer, model.loss, model.global_step], feed_dict=feed)
         writer.add_summary(summary, global_step=global_step)
         print('iteration {}, {}/{}, loss: {:>.4F}'.format(itr, feeder.cursor, feeder.size, loss))
@@ -24,10 +24,10 @@ def run_epoch(itr, sess, model, feeder, evaluator, writer):
 
 
 def train(auto_stop):
-    model = Model(config.checkpoint_folder)
     dataset = Dataset()
     feeder = TrainFeeder(dataset)
     evaluator = Evaluator(dataset)
+    model = Model(config.checkpoint_folder)
     with tf.Session() as sess:
         model.restore(sess)
         #utils.rmdir(config.log_folder)

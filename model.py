@@ -21,6 +21,7 @@ class Model(object):
         self.create_inputs()
         self.create_embeddings()
         self.create_encoder()
+        self.create_self_match()
         self.create_decoder()
         self.create_loss()
         self.create_optimizer()
@@ -74,12 +75,19 @@ class Model(object):
             tf.summary.histogram('encoder/last_state', self.encoder_last_state)
 
 
+    def create_self_match(self):
+        with tf.name_scope('self_match'):
+            self_att = func.dot_attention(self.encoding, self.encoding, self.mask, config.encoder_hidden_dim, self.input_keep_prob)
+            self.self_match, _ = func.rnn('gru', self_att, self.length, config.encoder_hidden_dim, 1, self.input_keep_prob)
+            tf.summary.histogram('attention/self_match', self.self_match)
+
+
     def create_decoder(self):
         with tf.name_scope('decoder'):
-            self.ws_answer = tf.get_variable(name='ws_answer', shape=[config.encoder_hidden_dim*2, 1])
-            self.ws_question = tf.get_variable(name='ws_question', shape=[config.encoder_hidden_dim*2, self.question_vocab_size])
-            self.encoding_sum = tf.reduce_sum(self.encoding, axis=1)
-            self.answer_logit = tf.einsum('aij,jk->aik', self.encoding, self.ws_answer)
+            self.ws_answer = tf.get_variable(name='ws_answer', shape=[config.encoder_hidden_dim, 1])
+            self.ws_question = tf.get_variable(name='ws_question', shape=[config.encoder_hidden_dim, self.question_vocab_size])
+            self.encoding_sum = tf.reduce_sum(self.self_match, axis=1)
+            self.answer_logit = tf.einsum('aij,jk->aik', self.self_match, self.ws_answer)
             self.answer_logit = tf.squeeze(self.answer_logit, [-1], name='answer_logit')
             self.question_logit = tf.clip_by_value(tf.matmul(self.encoding_sum, self.ws_question), -10, 10, name='question_logit')
             tf.summary.histogram('decoder/answer_logit', self.answer_logit)

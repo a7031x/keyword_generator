@@ -38,19 +38,21 @@ class Evaluator(TrainFeeder):
     def predict(self, sess, model, answer, question):
         aids, qids, qv, av, kb = self.create_feed(answer, question)
         feed = model.feed([aids], [qids], [qv], [av], kb)
-        answer_logit, question_logit = sess.run([model.answer_logit, model.question_logit], feed_dict=feed)
+        answer_logit, question_logit, qsl = sess.run([model.answer_logit, model.question_logit, model.question_sequence_logit], feed_dict=feed)
         #question_ids = [id for id, v in enumerate(question_logit[0]) if v >= 0]
         #answer_ids = [id for id, v in enumerate(answer_logit[0]) if v >= 0]
         qids = sorted(enumerate(question_logit[0]), key=lambda x:-x[1])[:10]
         aw = set([word for word,value in zip(answer, answer_logit[0]) if value >= 0])
         qw = set(self.qids_to_sent([id for id,_ in qids]))
+        qs = self.qids_to_sent(qsl[0])
         print('==================================================')
         print('answer', ' '.join(answer))
         print('---------------------------------------------------')
         print('question', ' '.join(question))
         print('words', qw, aw)
+        print('predict question', qs)
         #print('question score', [v for _,v in qids])
-        print('answer score', ['{}:{:>.4f}'.format(w,x) for w,x in zip(answer, answer_logit[0])])
+        #print('answer score', ['{}:{:>.4f}'.format(w,x) for w,x in zip(answer, answer_logit[0])])
         return qw, aw 
 
 

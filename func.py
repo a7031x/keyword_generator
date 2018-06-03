@@ -141,8 +141,8 @@ def dot_attention(value, memory, mask, weight_dim, keep_prob):
     dense_value = dense(value, weight_dim, False, 'value')#[batch, plen, 75]
     dense_memory = dense(memory, weight_dim, False, 'memory')#[batch, qlen, 75]
     coref = tf.matmul(dense_value, tf.transpose(dense_memory, [0, 2, 1])) / (weight_dim**0.5)#[batch, plen, qlen]
-    #alpha = softmax(coref, tf.expand_dims(mask, axis=1))#[batch, plen, qlen]
-    alpha = tf.sigmoid(coref) * tf.expand_dims(mask, axis=1)#[batch, plen, qlen]
+    alpha = softmax(coref, tf.expand_dims(mask, axis=1))#[batch, plen, qlen]
+    #alpha = tf.sigmoid(coref) * tf.expand_dims(mask, axis=1)#[batch, plen, qlen]
     ct = tf.matmul(alpha, memory, name='ct')#[batch, plen, 500]
     return ct
 

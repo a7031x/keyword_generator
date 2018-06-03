@@ -72,7 +72,7 @@ class Model(object):
 
     def create_encoder(self):
         with tf.name_scope('encoder'):
-            self.encoding, _ = func.rnn('bi-lstm', self.emb, self.length, config.encoder_hidden_dim, 2, self.input_keep_prob)
+            self.encoding, _ = func.rnn('bi-lstm', self.emb, self.length, config.encoder_hidden_dim, 4, self.input_keep_prob)
             self.encoding = tf.nn.dropout(self.encoding, self.input_keep_prob, name='encoding')
             b_fw = self.encoding[:,-1,:config.encoder_hidden_dim]
             b_bw = self.encoding[:,0,config.encoder_hidden_dim:]

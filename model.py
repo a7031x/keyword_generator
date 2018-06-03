@@ -135,6 +135,13 @@ class Model(object):
             tf.summary.histogram('qa_attention/question_sequence_logit', self.question_sequence_logit)
 
 
+    def calc_regularization_loss(self):
+        loss = 0
+        for variable in tf.trainable_variables():
+            loss = tf.nn.l2_loss(variable) + loss
+        return loss * 0.0001
+
+
     def create_loss(self):
         with tf.name_scope('loss'):
             self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, self.mask, pos_weight=3.0)
@@ -146,11 +153,12 @@ class Model(object):
             self.question_sequence_loss = func.sparse_cross_entropy(logit, self.input_label_question, tf.expand_dims(self.question_mask, -1), pos_weight=self.question_word_weight)
             self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1)
             self.question_sequence_loss = tf.reduce_mean(self.question_sequence_loss)
-            
-            self.loss = self.answer_loss + self.question_vector_loss + self.question_sequence_loss
+            self.regularization_loss = self.calc_regularization_loss()
+            self.loss = self.answer_loss + self.question_vector_loss + self.question_sequence_loss + self.regularization_loss
             tf.summary.scalar('answer_loss', self.answer_loss)
             tf.summary.scalar('question_vector_loss', self.question_vector_loss)
             tf.summary.scalar('question_sequence_loss', self.question_sequence_loss)
+            tf.summary.scalar('regularization_loss', self.regularization_loss)
             tf.summary.scalar('loss', self.loss)
 
 

@@ -142,12 +142,8 @@ class Model(object):
             self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
             self.question_vector_loss = tf.reduce_mean(tf.reduce_sum(self.question_vector_loss, -1))
 
-            self.final_question_mask = tf.sequence_mask(self.question_grid_len, dtype=tf.float32)
-            target = tf.one_hot(self.input_label_question, self.question_vocab_size, dtype=tf.float32)
-            self.question_sequence_loss = tf.reduce_sum(tf.nn.weighted_cross_entropy_with_logits(
-                logits=self.question_sequence_logit[:,:self.question_grid_len,:],
-                targets=target,
-                pos_weight=self.question_word_weight), -1) * self.question_mask
+            logit = func.softmax(self.question_sequence_logit, 1)
+            self.question_sequence_loss = func.sparse_cross_entropy(logit, self.input_label_question, tf.expand_dims(self.question_mask, -1), pos_weight=self.question_word_weight)
             self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1)
             self.question_sequence_loss = tf.reduce_mean(self.question_sequence_loss)
             

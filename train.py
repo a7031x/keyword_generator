@@ -27,7 +27,7 @@ def train(auto_stop):
     dataset = Dataset()
     feeder = TrainFeeder(dataset)
     evaluator = Evaluator(dataset)
-    model = Model(config.checkpoint_folder)
+    model = Model(dataset.qi2c, config.checkpoint_folder)
     with tf.Session() as sess:
         model.restore(sess)
         #utils.rmdir(config.log_folder)

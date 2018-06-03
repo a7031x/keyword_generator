@@ -1,15 +1,23 @@
 import tensorflow as tf
+import numpy as np
 import utils
 import func
 import config
 import os
 
 class Model(object):
-    def __init__(self, ckpt_folder, name='model'):
+    def __init__(self, qi2c, ckpt_folder, name='model'):
         self.name = name
         self.ckpt_folder = ckpt_folder
         self.question_vocab_size = config.question_vocab_size
         self.answer_vocab_size = config.answer_vocab_size
+        qww = [0] * self.question_vocab_size
+        pmax = qi2c[16]
+        for i,c in qi2c.items():
+            qww[i] = min(c, pmax)
+        qww = np.array(qww) ** 0.5
+        self.question_word_weight = 5 - 4 * qww / np.max(qww)
+        print(self.question_word_weight[:50])
         if self.ckpt_folder is not None:
             utils.mkdir(self.ckpt_folder)
         initializer = tf.random_uniform_initializer(-0.05, 0.05)
@@ -130,14 +138,16 @@ class Model(object):
     def create_loss(self):
         with tf.name_scope('loss'):
             self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, self.mask, pos_weight=3.0)
-            self.question_vector_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question_vector, None, pos_weight=3.0)
+            self.question_vector_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question_vector, None, pos_weight=self.question_word_weight)
             self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
             self.question_vector_loss = tf.reduce_mean(tf.reduce_sum(self.question_vector_loss, -1))
 
             self.final_question_mask = tf.sequence_mask(self.question_grid_len, dtype=tf.float32)
-            self.question_sequence_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=self.question_sequence_logit,
-                labels=self.input_label_question) * self.question_mask
+            target = tf.one_hot(self.input_label_question, self.question_vocab_size, dtype=tf.float32)
+            self.question_sequence_loss = tf.reduce_sum(tf.nn.weighted_cross_entropy_with_logits(
+                logits=self.question_sequence_logit[:,:self.question_grid_len,:],
+                targets=target,
+                pos_weight=self.question_word_weight), -1) * self.question_mask
             self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1)
             self.question_sequence_loss = tf.reduce_mean(self.question_sequence_loss)
             
@@ -190,4 +200,6 @@ class Model(object):
 
 
 if __name__ == '__main__':
-    model = Model(None)
+    from data import Dataset
+    data = Dataset()
+    model = Model(data.qi2c, None)

@@ -108,7 +108,7 @@ def load_vocab(filename, count):
         word, freq = line.rsplit(':', 1)
         id = len(w2i)
         w2i[word] = id
-        i2c[id] = freq
+        i2c[id] = int(freq)
     i2w = {k:v for v,k in w2i.items()}
     i2c[config.OOV_ID] = len(all_entries) - count
     return w2i, i2w, i2c

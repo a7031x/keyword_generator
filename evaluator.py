@@ -44,7 +44,7 @@ class Evaluator(TrainFeeder):
         qids = sorted(enumerate(question_logit[0]), key=lambda x:-x[1])[:10]
         aw = set([word for word,value in zip(answer, answer_logit[0]) if value >= 0])
         qw = set(self.qids_to_sent([id for id,_ in qids]))
-        qs = self.qids_to_sent(qsl[0])
+        qs = self.qids_to_sent(np.argmax(qsl[0], axis=-1))
         print('==================================================')
         print('answer', ' '.join(answer))
         print('---------------------------------------------------')
@@ -67,8 +67,8 @@ class Evaluator(TrainFeeder):
 if __name__ == '__main__':
     from model import Model
     import tensorflow as tf
-    model = Model(config.checkpoint_folder)
     evaluator = Evaluator()
+    model = Model(evaluator.dataset.qi2c, config.checkpoint_folder)
     with tf.Session() as sess:
         model.restore(sess)
         #evaluator.evaluate(sess, model, 'The cat sat on the mat', 'what is on the mat')

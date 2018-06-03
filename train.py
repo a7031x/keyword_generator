@@ -10,6 +10,7 @@ from model import Model
 def diagm(name, value):
     small = np.min(value)
     big = np.max(value)
+    assert np.all(np.isfinite(value))
     print('{}: {:>.4f} ~ {:>.4f}'.format(name, small, big))
 
 
@@ -28,11 +29,11 @@ def run_epoch(itr, sess, model, feeder, evaluator, writer):
         diagm('answer_logit', answer_logit)
         diagm('self_match', self_match)
         diagm('reg_loss', reg_loss)
-        print('----ITERATION {}, {}/{}, loss: {:>.4F}'.format(itr, feeder.cursor, feeder.size, loss))
+        print('------------------ITERATION {}, {}/{}, loss: {:>.4F}'.format(itr, feeder.cursor, feeder.size, loss))
         nbatch += 1
         if nbatch % 10 == 0:
             loss = evaluator.evaluate(sess, model)
-            print('====DEV loss: {:>.4F}----'.format(loss))
+            print('===================DEV loss: {:>.4F}----'.format(loss))
             model.save(sess)
 
 

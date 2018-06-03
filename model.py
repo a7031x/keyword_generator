@@ -44,6 +44,7 @@ class Model(object):
             self.input_label_question = tf.placeholder(tf.int32, shape=[None, None], name='label_question')
             self.input_label_question_vector = tf.placeholder(tf.float32, shape=[None, self.question_vocab_size], name='label_question_vector')
             self.question_mask, self.question_len = func.tensor_to_mask(self.input_label_question)
+            self.question_grid_len = tf.reduce_max(self.question_len)
 
 
     def feed(self, aids, qids=None, qv=None, st=None, keep_prob=1.0):
@@ -107,7 +108,7 @@ class Model(object):
             initial_state = tf.contrib.rnn.LSTMStateTuple(init_state[:,:config.decoder_hidden_dim], init_state[:,config.decoder_hidden_dim:])
             output_sequence, self.decoder_length = func.rnn_decode(
                 'lstm', self.batch_size, config.decoder_hidden_dim, self.question_embedding,
-                config.SOS_ID, config.EOS_ID, (initial_state,), config.max_question_len)
+                config.SOS_ID, config.EOS_ID, (initial_state,), self.question_grid_len)
             self.decoder_hidden = tf.identity(output_sequence.rnn_output, 'decoder_hidden')
             tf.summary.histogram('seq_decoder/hidden', self.decoder_hidden)
 
@@ -122,8 +123,8 @@ class Model(object):
             self.wt_h = tf.einsum('bij,ijk->bik', self.combined_h, self.wt[:self.decoder_question_len,:,:], name='wt_h')
             self.ws_tanh_wt = tf.einsum('bik,kj->bij', tf.tanh(self.wt_h), self.ws)
             #self.question_sequence_logit = func.softmax(self.ws_tanh_wt, tf.expand_dims(self.question_mask, -1))
-            self.question_sequence_logit = tf.identity(self.ws_tanh_wt, name='question_sequence_logit')
-            tf.summary.histogram('question_sequence_logit', self.question_sequence_logit)
+            self.question_sequence_logit = tf.clip_by_value(self.ws_tanh_wt, -10, 10, name='question_sequence_logit')            
+            tf.summary.histogram('qa_attention/question_sequence_logit', self.question_sequence_logit)
 
 
     def create_loss(self):
@@ -133,21 +134,11 @@ class Model(object):
             self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
             self.question_vector_loss = tf.reduce_mean(tf.reduce_sum(self.question_vector_loss, -1))
 
-            self.input_question_len = tf.shape(self.input_label_question)[1]
-            self.final_question_len = tf.maximum(self.decoder_question_len, self.input_question_len)
-            self.final_question_mask = tf.sequence_mask(self.final_question_len, dtype=tf.float32)
-            sequence_label = tf.concat(
-                [self.input_label_question, tf.zeros(shape=[self.batch_size, self.final_question_len-self.input_question_len], dtype=tf.int32)],
-                axis=1)
-            sequence_logit = tf.concat(
-                [self.question_sequence_logit,
-                 tf.zeros(shape=[self.batch_size, self.final_question_len-self.decoder_question_len, self.question_vocab_size])],
-                 axis=1)
+            self.final_question_mask = tf.sequence_mask(self.question_grid_len, dtype=tf.float32)
             self.question_sequence_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=sequence_logit,
-                labels=sequence_label) * self.final_question_mask
-            minimum_len = tf.cast(tf.minimum(self.decoder_question_len, self.question_len), tf.float32)
-            self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1) / minimum_len
+                logits=self.question_sequence_logit,
+                labels=self.input_label_question) * self.question_mask
+            self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1) / tf.cast(self.question_len, tf.float32)
             self.question_sequence_loss = tf.reduce_mean(self.question_sequence_loss)
             
             self.loss = self.answer_loss + self.question_vector_loss + self.question_sequence_loss

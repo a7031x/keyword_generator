@@ -121,7 +121,7 @@ def load_qa(filename, answer_limit=0):
         if q is not None:
             answer = line.split(' ')
             if answer_limit == 0 or len(answer) <= answer_limit:
-                qas.append((q.split(' '), answer))
+                qas.append((q.split(' ')[:config.max_question_len], answer))
             q = None
         else:
             q = line

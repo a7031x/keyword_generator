@@ -29,14 +29,15 @@ class Evaluator(TrainFeeder):
         #question = question.split(' ')
         #answer = answer.split(' ')
         aids = self.asent_to_id(answer)
+        qids = self.qsent_to_id(question)
         qv, _ = self.label_qa(question)
         st = self.seq_tag(question, answer)
-        return aids, qv, st, 1.0
+        return aids, qids, qv, st, 1.0
 
 
     def predict(self, sess, model, answer, question):
-        aids, qv, av, kb = self.create_feed(answer, question)
-        feed = model.feed([aids], [qv], [av], kb)
+        aids, qids, qv, av, kb = self.create_feed(answer, question)
+        feed = model.feed([aids], [qids], [qv], [av], kb)
         answer_logit, question_logit = sess.run([model.answer_logit, model.question_logit], feed_dict=feed)
         #question_ids = [id for id, v in enumerate(question_logit[0]) if v >= 0]
         #answer_ids = [id for id, v in enumerate(answer_logit[0]) if v >= 0]

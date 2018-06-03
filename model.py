@@ -103,7 +103,7 @@ class Model(object):
             self.ws_question = tf.get_variable(name='ws_question', shape=[config.encoder_hidden_dim, self.question_vocab_size])
             self.encoding_sum = tf.reduce_sum(self.self_match, axis=1)
             self.answer_logit = tf.einsum('aij,jk->aik', self.self_match, self.ws_answer)
-            self.answer_logit = tf.squeeze(self.answer_logit, [-1], name='answer_logit')
+            self.answer_logit = tf.clip_by_value(tf.squeeze(self.answer_logit, [-1]), -10, 10, name='answer_logit')
             self.question_logit = tf.clip_by_value(tf.matmul(self.encoding_sum, self.ws_question), -10, 10, name='question_logit')
             tf.summary.histogram('decoder/answer_logit', self.answer_logit)
             tf.summary.histogram('decoder/question_logit', self.question_logit)

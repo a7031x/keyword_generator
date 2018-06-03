@@ -138,7 +138,7 @@ class Model(object):
             self.question_sequence_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 logits=self.question_sequence_logit,
                 labels=self.input_label_question) * self.question_mask
-            self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1) / tf.cast(self.question_len, tf.float32)
+            self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1)
             self.question_sequence_loss = tf.reduce_mean(self.question_sequence_loss)
             
             self.loss = self.answer_loss + self.question_vector_loss + self.question_sequence_loss

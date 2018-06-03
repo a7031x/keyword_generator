@@ -7,6 +7,12 @@ from data import TrainFeeder, Dataset
 from model import Model
 
 
+def diagm(value, name):
+    small = np.min(value)
+    big = np.max(value)
+    print('{}: {:>.4f} ~ {:>.4f}'.format(name, small, big))
+    
+
 def run_epoch(itr, sess, model, feeder, evaluator, writer):
     feeder.prepare('train')
     nbatch = 0

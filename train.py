@@ -29,7 +29,7 @@ def run_epoch(itr, sess, model, feeder, evaluator, writer):
         nbatch += 1
         if nbatch % 10 == 0:
             loss = evaluator.evaluate(sess, model)
-            print('===================DEV loss: {:>.4F}----'.format(loss))
+            print('===================DEV loss: {:>.4F}==============='.format(loss))
             model.save(sess)
 
 

@@ -183,9 +183,13 @@ class Model(object):
     
     def create_vector_loss(self):
         with tf.name_scope('vector_loss'):
-            self.max_logit = ts.hardmax(self.question_logit) * self.question_logit
+            mask = tf.expand_dims(self.question_mask, -1)
+            hardmax = ts.hardmax(self.question_logit)
+            self.max_logit = hardmax * self.question_logit * mask
             self.squeezed_logit = tf.reduce_sum(self.max_logit, 1)
-            self.vector_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_label_question_vector, logits=self.squeezed_logit))
+            vector_mask = tf.cast(tf.reduce_sum(hardmax, 1) > 0.0, tf.float32)
+            vector_loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_label_question_vector, logits=self.squeezed_logit) * vector_mask
+            self.vector_loss = tf.reduce_mean(tf.reduce_sum(vector_loss, -1))
             tf.summary.scalar('vector_loss', self.vector_loss)
 
 

@@ -9,13 +9,13 @@ def create_rnn_cell(unit_type, num_units, num_layers, num_residual_layers, keep_
             unit_type=unit_type,
             num_units=num_units,
             forget_bias=forget_bias,
-            dropout=1-keep_prob,
+            keep_prob=keep_prob,
             residual_connection=(i >= num_layers - num_residual_layers))
-    cell_list.append(single_cell)
+        cell_list.append(single_cell)
     return tf.contrib.rnn.MultiRNNCell(cell_list)
 
 
-def _single_cell(unit_type, num_units, forget_bias, dropout,
+def _single_cell(unit_type, num_units, forget_bias, keep_prob,
                  residual_connection=False, device_str=None, residual_fn=None):
 
     if unit_type == "lstm":
@@ -29,9 +29,7 @@ def _single_cell(unit_type, num_units, forget_bias, dropout,
     else:
         raise ValueError("Unknown unit type %s!" % unit_type)
 
-    # Dropout (= 1 - keep_prob)
-    if dropout > 0.0:
-        single_cell = tf.contrib.rnn.DropoutWrapper(cell=single_cell, input_keep_prob=(1.0 - dropout))
+    single_cell = tf.contrib.rnn.DropoutWrapper(cell=single_cell, input_keep_prob=keep_prob)
 
     # Residual
     if residual_connection:

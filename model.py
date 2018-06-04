@@ -1,4 +1,7 @@
 import tensorflow as tf
+import tensorflow.contrib.seq2seq as ts
+from tensorflow.python.layers import core as layers_core
+import rnn_helper as rnn
 import numpy as np
 import utils
 import func
@@ -6,17 +9,18 @@ import config
 import os
 
 class Model(object):
-    def __init__(self, qi2c, ckpt_folder, name='model'):
+    def __init__(self, qi2c, ckpt_folder, train_mode=True, name='model'):
         self.name = name
         self.ckpt_folder = ckpt_folder
         self.question_vocab_size = config.question_vocab_size
         self.answer_vocab_size = config.answer_vocab_size
+        self.train_mode = train_mode
         qww = [0] * self.question_vocab_size
-        pmax = qi2c[16]
+        pmax = qi2c[80]
         for i,c in qi2c.items():
             qww[i] = min(c, pmax)
         qww = np.array(qww) ** 0.5
-        self.question_word_weight = 5 - 4 * qww / np.max(qww)
+        self.question_word_weight = 5 - 4.7 * qww / np.max(qww)
         print(self.question_word_weight[:50])
         if self.ckpt_folder is not None:
             utils.mkdir(self.ckpt_folder)
@@ -29,12 +33,10 @@ class Model(object):
         self.create_inputs()
         self.create_embeddings()
         self.create_encoder()
-        self.create_self_match()
         self.create_decoder()
-        self.create_seq_decoder()
-        self.create_attention()
-        self.create_loss()
-        self.create_optimizer()
+        if self.train_mode:
+            self.create_loss()
+            self.create_optimizer()
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=2)
         total, vc = self.number_parameters()
         print('trainable parameters: {}'.format(total))
@@ -51,8 +53,9 @@ class Model(object):
             self.input_label_answer = tf.placeholder(tf.float32, shape=[None, None], name='label_answer')
             self.input_label_question = tf.placeholder(tf.int32, shape=[None, None], name='label_question')
             self.input_label_question_vector = tf.placeholder(tf.float32, shape=[None, self.question_vocab_size], name='label_question_vector')
-            self.question_mask, self.question_len = func.tensor_to_mask(self.input_label_question)
-            self.question_grid_len = tf.reduce_max(self.question_len)
+            self.target_label_question = tf.concat([self.input_label_question, tf.expand_dims(tf.fill([self.batch_size], config.EOS_ID), 1)], 1)
+            self.question_mask, self.question_len = func.tensor_to_mask(self.target_label_question)
+            self.max_question_len = tf.reduce_max(self.question_len)
 
 
     def feed(self, aids, qids=None, qv=None, st=None, keep_prob=1.0):
@@ -71,8 +74,8 @@ class Model(object):
 
     def create_embeddings(self):
         with tf.name_scope('embedding'):
-            self.question_embedding = tf.get_variable(name='question_embedding', shape=[self.question_vocab_size, config.embedding_dim])
             self.answer_embedding = tf.get_variable(name='answer_embedding', shape=[self.answer_vocab_size, config.embedding_dim])
+            self.question_embedding = tf.get_variable(name='question_embedding', shape=[self.question_vocab_size, config.embedding_dim])
             self.emb = tf.nn.embedding_lookup(self.answer_embedding, self.input_word, name='emb')
             tf.summary.histogram('embedding/question_embedding', self.question_embedding)
             tf.summary.histogram('embedding/answer_embedding', self.answer_embedding)
@@ -81,58 +84,80 @@ class Model(object):
 
     def create_encoder(self):
         with tf.name_scope('encoder'):
-            self.encoding, _ = func.rnn('bi-lstm', self.emb, self.length, config.encoder_hidden_dim, 4, self.input_keep_prob)
-            self.encoding = tf.nn.dropout(self.encoding, self.input_keep_prob, name='encoding')
-            b_fw = self.encoding[:,-1,:config.encoder_hidden_dim]
-            b_bw = self.encoding[:,0,config.encoder_hidden_dim:]
-            self.encoder_last_state = tf.concat([b_fw, b_bw], -1)
-            tf.summary.histogram('encoder/encoding', self.encoding)
-            tf.summary.histogram('encoder/last_state', self.encoder_last_state)
-
-
-    def create_self_match(self):
-        with tf.name_scope('self_match'), tf.variable_scope('self_match'):
-            self_att = func.dot_attention(self.encoding, self.encoding, self.mask, config.encoder_hidden_dim, self.input_keep_prob)
-            self.self_match, _ = func.rnn('gru', self_att, self.length, config.encoder_hidden_dim, 1, self.input_keep_prob)
-            tf.summary.histogram('attention/self_match', self.self_match)
+            fw_cell = rnn.create_rnn_cell('lstm', config.encoder_hidden_dim, config.num_encoder_rnn_layers, config.num_encoder_residual_layers, self.input_keep_prob)
+            bw_cell = rnn.create_rnn_cell('lstm', config.encoder_hidden_dim, config.num_encoder_rnn_layers, config.num_encoder_residual_layers, self.input_keep_prob)
+            '''
+            fw_cell = []
+            bw_cell = []
+            for i in range(config.num_encoder_rnn_layers):
+                fw = tf.contrib.rnn.BasicLSTMCell(config.encoder_hidden_dim)
+                bw = tf.contrib.rnn.BasicLSTMCell(config.encoder_hidden_dim)
+                fw = tf.contrib.rnn.DropoutWrapper(cell=fw, input_keep_prob=self.input_keep_prob)
+                bw = tf.contrib.rnn.DropoutWrapper(cell=bw, input_keep_prob=self.input_keep_prob)
+                if i == 0:
+                    fw = tf.contrib.rnn.ResidualWrapper(fw, residual_fn=None)
+                    bw = tf.contrib.rnn.ResidualWrapper(bw, residual_fn=None)
+                fw_cell.append(fw)
+                bw_cell.append(bw)
+            fw_cell = tf.contrib.rnn.MultiRNNCell(fw_cell)
+            bw_cell = tf.contrib.rnn.MultiRNNCell(bw_cell)
+            '''
+            bi_output, bi_encoder_state = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell, self.emb, dtype=tf.float32, sequence_length=self.length, swap_memory=True)
+            self.encoder_output = tf.concat(bi_output, -1)
+            encoder_state = []
+            for layer_id in range(config.num_encoder_rnn_layers):
+                encoder_state.append(bi_encoder_state[0][layer_id])  # forward
+                encoder_state.append(bi_encoder_state[1][layer_id])  # backward
+            self.encoder_state = tuple(encoder_state)
+            tf.summary.histogram('encoder/encoder_output', self.encoder_output)
+            tf.summary.histogram('encoder/encoder_state', self.encoder_state)
 
 
     def create_decoder(self):
+        with tf.variable_scope('decoder/output_projection'):
+            output_layer = layers_core.Dense(self.question_vocab_size, use_bias=False, name='output_projection')
         with tf.name_scope('decoder'):
-            self.ws_answer = tf.get_variable(name='ws_answer', shape=[config.encoder_hidden_dim, 1])
-            self.ws_question = tf.get_variable(name='ws_question', shape=[config.encoder_hidden_dim, self.question_vocab_size])
-            self.encoding_sum = tf.reduce_sum(self.self_match, axis=1)
-            self.answer_logit = tf.einsum('aij,jk->aik', self.self_match, self.ws_answer)
-            self.answer_logit = tf.clip_by_value(tf.squeeze(self.answer_logit, [-1]), -10, 10, name='answer_logit')
-            self.question_logit = tf.clip_by_value(tf.matmul(self.encoding_sum, self.ws_question), -10, 10, name='question_logit')
-            tf.summary.histogram('decoder/answer_logit', self.answer_logit)
-            tf.summary.histogram('decoder/question_logit', self.question_logit)
+            if self.train_mode:
+                memory = self.encoder_output
+                source_sequence_length = self.length
+                encoder_state = self.encoder_state
+                batch_size = self.batch_size
+            else:
+                memory = tf.contrib.seq2seq.tile_batch(self.encoder_output, multiplier=config.beam_width)
+                source_sequence_length = ts.tile_batch(self.length, multiplier=config.beam_width)
+                encoder_state = tf.contrib.seq2seq.tile_batch(self.encoder_state, multiplier=config.beam_width)
+                batch_size = self.batch_size * config.beam_width
 
+            attention_mechanism = ts.LuongAttention(config.decoder_hidden_dim, memory, source_sequence_length, scale=True)
+            cell = rnn.create_rnn_cell('lstm', config.decoder_hidden_dim, config.num_decoder_rnn_layers, config.num_decoder_residual_layers, self.input_keep_prob)
+            cell = ts.AttentionWrapper(cell, attention_mechanism,
+                attention_layer_size=config.decoder_hidden_dim,
+                alignment_history=(not self.train_mode) and (config.beam_width == 0),
+                output_attention=True,
+                name='attention')
 
-    def create_seq_decoder(self):
-        with tf.name_scope('seq_decoder'):
-            init_state = func.dense(self.self_match, config.decoder_hidden_dim*2, scope='seq_decoder_init_state')
-            init_state = tf.reduce_sum(init_state, 1)
-            initial_state = tf.contrib.rnn.LSTMStateTuple(init_state[:,:config.decoder_hidden_dim], init_state[:,config.decoder_hidden_dim:])
-            output_sequence, self.decoder_length = func.rnn_decode(
-                'lstm', self.batch_size, config.decoder_hidden_dim, self.question_embedding,
-                config.SOS_ID, config.EOS_ID, (initial_state,), self.question_grid_len)
-            self.decoder_hidden = tf.identity(output_sequence.rnn_output, 'decoder_hidden')
-            tf.summary.histogram('seq_decoder/hidden', self.decoder_hidden)
-
-
-    def create_attention(self):
-        with tf.name_scope('qa_attention'), tf.variable_scope('qa_attention'):
-            self.ct = func.dot_attention(self.decoder_hidden, self.self_match, self.mask, config.dot_attention_dim, self.input_keep_prob)
-            self.combined_h = tf.concat([self.decoder_hidden, self.ct], -1, name='combined_h')#[batch, question_len, 450]           
-            self.wt = tf.get_variable('wt', shape=[config.max_question_len, self.combined_h.get_shape()[-1], config.decoder_hidden_dim])
-            self.ws = tf.get_variable('ws', shape=[config.decoder_hidden_dim, self.question_vocab_size])
-            self.decoder_question_len = tf.shape(self.combined_h)[1]
-            self.wt_h = tf.einsum('bij,ijk->bik', self.combined_h, self.wt[:self.decoder_question_len,:,:], name='wt_h')
-            self.ws_tanh_wt = tf.einsum('bik,kj->bij', tf.tanh(self.wt_h), self.ws)
-            #self.question_sequence_logit = func.softmax(self.ws_tanh_wt, tf.expand_dims(self.question_mask, -1))
-            self.question_sequence_logit = tf.clip_by_value(self.ws_tanh_wt, -10, 10, name='question_sequence_logit')            
-            tf.summary.histogram('qa_attention/question_sequence_logit', self.question_sequence_logit)
+            decoder_initial_state = cell.zero_state(batch_size, tf.float32).clone(cell_state=encoder_state)
+            start_tokens = tf.fill([self.batch_size], config.SOS_ID)
+            if self.train_mode:
+                target_input = tf.concat([tf.expand_dims(start_tokens, -1), self.input_label_question], 1)
+                decoder_emb = tf.nn.embedding_lookup(self.question_embedding, target_input)
+                helper = ts.TrainingHelper(decoder_emb, self.question_len)
+                decoder = ts.BasicDecoder(cell, helper, decoder_initial_state)
+                output, self.final_context_state, _ = ts.dynamic_decode(decoder, swap_memory=True, scope='decoder')
+                self.question_logit = output_layer(output.rnn_output)
+                tf.summary.histogram('decoder/logit', self.question_logit)
+            else:
+                decoder = ts.BeamSearchDecoder(
+                    cell=cell,
+                    embedding=self.question_embedding,
+                    start_tokens=start_tokens,
+                    end_token=config.EOS_ID,
+                    initial_state=decoder_initial_state,
+                    beam_width=config.beam_width,
+                    output_layer=output_layer,
+                    length_penalty_weight=0.0)
+                output, self.final_context_state, _ = ts.dynamic_decode(decoder, config.max_question_len, scope='decoder')
+                self.sample_id = output.predicted_ids
 
 
     def calc_regularization_loss(self):
@@ -144,20 +169,9 @@ class Model(object):
 
     def create_loss(self):
         with tf.name_scope('loss'):
-            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, self.mask, pos_weight=3.0)
-            self.question_vector_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question_vector, None, pos_weight=self.question_word_weight)
-            self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
-            self.question_vector_loss = tf.reduce_mean(tf.reduce_sum(self.question_vector_loss, -1))
-
-            logit = func.softmax(self.question_sequence_logit, 1)
-            self.question_sequence_loss = func.sparse_cross_entropy(logit, self.input_label_question, tf.expand_dims(self.question_mask, -1), pos_weight=self.question_word_weight)
-            self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1)
-            self.question_sequence_loss = tf.reduce_mean(self.question_sequence_loss)
+            crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.target_label_question, logits=self.question_logit) * self.question_mask
             self.regularization_loss = self.calc_regularization_loss()
-            self.loss = self.answer_loss + self.question_vector_loss + self.question_sequence_loss + self.regularization_loss
-            tf.summary.scalar('answer_loss', self.answer_loss)
-            tf.summary.scalar('question_vector_loss', self.question_vector_loss)
-            tf.summary.scalar('question_sequence_loss', self.question_sequence_loss)
+            self.loss = tf.reduce_sum(crossent) / tf.to_float(self.batch_size)
             tf.summary.scalar('regularization_loss', self.regularization_loss)
             tf.summary.scalar('loss', self.loss)
 

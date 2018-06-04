@@ -64,6 +64,8 @@ class Model(object):
             self.input_keep_prob: keep_prob
         }
         if qv is not None:
+            for v in qv:
+                v[config.EOS_ID] = 1
             feed_dict[self.input_label_question_vector] = qv
         if st is not None:
             feed_dict[self.input_label_answer] = st
@@ -171,11 +173,27 @@ class Model(object):
         return loss * 0.0001
 
 
-    def create_loss(self):
-        with tf.name_scope('loss'):
+    def create_seq_loss(self):
+        with tf.name_scope('seq_loss'):
             crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.input_target_question, logits=self.question_logit) * self.question_mask
             self.regularization_loss = self.calc_regularization_loss()
-            self.loss = tf.reduce_sum(crossent) / tf.to_float(self.batch_size)
+            self.seq_loss = tf.reduce_sum(crossent) / tf.to_float(self.batch_size)
+            tf.summary.scalar('seq_loss', self.seq_loss)
+
+    
+    def create_vector_loss(self):
+        with tf.name_scope('vector_loss'):
+            self.max_logit = ts.hardmax(self.question_logit) * self.question_logit
+            self.squeezed_logit = tf.reduce_sum(self.max_logit, 1)
+            self.vector_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_label_question_vector, logits=self.squeezed_logit))
+            tf.summary.scalar('vector_loss', self.vector_loss)
+
+
+    def create_loss(self):
+        self.create_vector_loss()
+        self.create_seq_loss()
+        with tf.name_scope('loss'):
+            self.loss = self.vector_loss + self.seq_loss
             tf.summary.scalar('regularization_loss', self.regularization_loss)
             tf.summary.scalar('loss', self.loss)
 

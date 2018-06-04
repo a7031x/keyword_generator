@@ -53,8 +53,8 @@ class Model(object):
             self.input_label_answer = tf.placeholder(tf.float32, shape=[None, None], name='label_answer')
             self.input_label_question = tf.placeholder(tf.int32, shape=[None, None], name='label_question')
             self.input_label_question_vector = tf.placeholder(tf.float32, shape=[None, self.question_vocab_size], name='label_question_vector')
-            self.target_label_question = tf.concat([self.input_label_question, tf.expand_dims(tf.fill([self.batch_size], config.EOS_ID), 1)], 1)
-            self.question_mask, self.question_len = func.tensor_to_mask(self.target_label_question)
+            self.input_target_question = tf.placeholder(tf.int32, shape=[None, None], name='target_question')
+            self.question_mask, self.question_len = func.tensor_to_mask(self.input_target_question)
             self.max_question_len = tf.reduce_max(self.question_len)
 
 
@@ -69,6 +69,10 @@ class Model(object):
             feed_dict[self.input_label_answer] = st
         if qids is not None:
             feed_dict[self.input_label_question] = qids
+            tids = [[id for id in x if id != config.NULL_ID] + [config.EOS_ID] for x in qids]
+            mlen = len(qids[0]) + 1
+            tids = [x + [config.NULL_ID] * (mlen-len(x)) for x in tids]
+            feed_dict[self.input_target_question] = tids
         return feed_dict
 
 
@@ -169,7 +173,7 @@ class Model(object):
 
     def create_loss(self):
         with tf.name_scope('loss'):
-            crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.target_label_question, logits=self.question_logit) * self.question_mask
+            crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.input_target_question, logits=self.question_logit) * self.question_mask
             self.regularization_loss = self.calc_regularization_loss()
             self.loss = tf.reduce_sum(crossent) / tf.to_float(self.batch_size)
             tf.summary.scalar('regularization_loss', self.regularization_loss)

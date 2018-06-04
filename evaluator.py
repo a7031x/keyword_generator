@@ -38,7 +38,7 @@ class Evaluator(TrainFeeder):
     def predict(self, sess, model, answer, question):
         aids, qids, qv, av, kb = self.create_feed(answer, question)
         feed = model.feed([aids], [qids], [qv], [av], kb)
-        sample_id = sess.run([model.sample_id], feed_dict=feed)
+        sample_id = sess.run(model.sample_id, feed_dict=feed)
         qs = self.qids_to_sent(np.argmax(sample_id[0], axis=-1))
         print('==================================================')
         print('answer', ' '.join(answer))

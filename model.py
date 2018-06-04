@@ -116,7 +116,7 @@ class Model(object):
     def create_decoder(self):
         with tf.variable_scope('decoder/output_projection'):
             output_layer = layers_core.Dense(self.question_vocab_size, use_bias=False, name='output_projection')
-        with tf.name_scope('decoder'):
+        with tf.name_scope('decoder'), tf.variable_scope('decoder') as decoder_scope:
             if self.train_mode:
                 memory = self.encoder_output
                 source_sequence_length = self.length
@@ -143,7 +143,7 @@ class Model(object):
                 decoder_emb = tf.nn.embedding_lookup(self.question_embedding, target_input)
                 helper = ts.TrainingHelper(decoder_emb, self.question_len)
                 decoder = ts.BasicDecoder(cell, helper, decoder_initial_state)
-                output, self.final_context_state, _ = ts.dynamic_decode(decoder, swap_memory=True, scope='decoder')
+                output, self.final_context_state, _ = ts.dynamic_decode(decoder, swap_memory=True, scope=decoder_scope)
                 self.question_logit = output_layer(output.rnn_output)
                 tf.summary.histogram('decoder/logit', self.question_logit)
             else:
@@ -156,7 +156,7 @@ class Model(object):
                     beam_width=config.beam_width,
                     output_layer=output_layer,
                     length_penalty_weight=0.0)
-                output, self.final_context_state, _ = ts.dynamic_decode(decoder, config.max_question_len, scope='decoder')
+                output, self.final_context_state, _ = ts.dynamic_decode(decoder, config.max_question_len, scope=decoder_scope)
                 self.sample_id = output.predicted_ids
 
 

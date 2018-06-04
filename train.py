@@ -10,7 +10,7 @@ from model import Model
 def diagm(name, value):
     small = np.min(value)
     big = np.max(value)
-    assert np.all(np.isfinite(value))
+    assert np.all(np.isfinite(value)), '{} contains invalid number'.format(name)
     print('{}: {:>.4f} ~ {:>.4f}'.format(name, small, big))
 
 
@@ -20,15 +20,11 @@ def run_epoch(itr, sess, model, feeder, evaluator, writer):
     while not feeder.eof():
         aids, qids, qv, st, kb = feeder.next()
         feed = model.feed(aids, qids, qv, st, kb)
-        summary, _, loss, global_step, answer_logit, self_match, reg_loss = sess.run(
+        summary, _, loss, global_step = sess.run(
             [
                 model.summary, model.optimizer, model.loss, model.global_step,
-                model.answer_logit, model.self_match, model.regularization_loss
             ], feed_dict=feed)
         writer.add_summary(summary, global_step=global_step)
-        diagm('answer_logit', answer_logit)
-        diagm('self_match', self_match)
-        diagm('reg_loss', reg_loss)
         print('------------------ITERATION {}, {}/{}, loss: {:>.4F}'.format(itr, feeder.cursor, feeder.size, loss))
         nbatch += 1
         if nbatch % 10 == 0:

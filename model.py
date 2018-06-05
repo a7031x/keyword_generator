@@ -145,7 +145,7 @@ class Model(object):
     def create_loss(self):
         with tf.name_scope('loss'):
             self.answer_loss = tf.nn.weighted_cross_entropy_with_logits(logits=self.answer_logit, targets=self.input_label_answer, pos_weight=3.0) * self.mask
-            self.question_vector_loss = tf.nn.weighted_cross_entropy_with_logits(self.question_logit, self.input_label_question_vector, pos_weight=self.question_word_weight)
+            self.question_vector_loss = tf.nn.weighted_cross_entropy_with_logits(logits=self.question_logit, targets=self.input_label_question_vector, pos_weight=self.question_word_weight)
             self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
             self.question_vector_loss = tf.reduce_mean(tf.reduce_sum(self.question_vector_loss, -1))
 

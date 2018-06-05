@@ -20,12 +20,12 @@ def run_epoch(itr, sess, model, feeder, evaluator, writer):
     while not feeder.eof():
         aids, qids, qv, st, kb = feeder.next()
         feed = model.feed(aids, qids, qv, st, kb)
-        summary, _, seq_loss, vector_loss, st_loss, loss, global_step, squeezed_logit, question_logit = sess.run(
+        summary, _, seq_loss, vector_loss, st_loss, loss, global_step, squeezed_logit, question_logit, answer_logit = sess.run(
             [
                 model.summary, model.optimizer,
                 model.seq_loss, model.vector_loss, model.answer_tag_loss, model.loss,
                 model.global_step,
-                model.squeezed_logit, model.question_logit
+                model.squeezed_logit, model.question_logit, model.answer_logit
             ], feed_dict=feed)
         qw = [id for id,v in enumerate(squeezed_logit[0]) if v > 0]
         predict_question = feeder.decode_logit(question_logit[0])
@@ -33,7 +33,7 @@ def run_epoch(itr, sess, model, feeder, evaluator, writer):
         print('-----ITERATION {}, {}/{}, loss: {:>.4F} + {:>.4F} + {:>.4F}={:>.4F}'.format(itr, feeder.cursor, feeder.size, seq_loss, vector_loss, st_loss, loss))
         print('question', feeder.qids_to_sent([x for x in qids[0] if x != config.NULL_ID]))
         print('predict question', predict_question)
-        #diagm('squeezed_logit', squeezed_logit)
+        diagm('answer logit', answer_logit)
         nbatch += 1
         if nbatch % 10 == 0:
             loss = evaluator.evaluate(sess, model)

@@ -2,9 +2,8 @@ import tensorflow as tf
 import tensorflow.contrib as tc
 
 def softmax(value, mask):
-    exp = tf.exp(value) * mask
-    alpha = exp / tf.expand_dims(tf.reduce_sum(exp, -1), -1)
-    return alpha
+    masked_value = value - (1-mask) * 10000
+    return tf.nn.softmax(masked_value)
 
 
 def dense(value, last_dim, use_bias=True, scope='dense'):

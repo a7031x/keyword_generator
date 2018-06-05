@@ -21,6 +21,7 @@ class Model(object):
             qww[i] = min(c, pmax)
         qww = np.array(qww) ** 0.5
         self.question_word_weight = 5 - 4.7 * qww / np.max(qww)
+        self.question_word_weight[config.EOS_ID] = 1
         print(self.question_word_weight[:50])
         if self.ckpt_folder is not None:
             utils.mkdir(self.ckpt_folder)
@@ -161,7 +162,9 @@ class Model(object):
             mask = tf.expand_dims(self.question_mask, -1)
             weight = mask * self.question_word_weight
             logit = tf.nn.softmax(self.question_logit[:,:self.max_question_len,:])
-            crossent = func.sparse_cross_entropy(logit, self.input_target_question) * weight
+            neg_weight = [1] * self.question_vocab_size
+            neg_weight[config.EOS_ID] = 2
+            crossent = func.sparse_cross_entropy(logit, self.input_target_question, neg_weight=neg_weight) * weight
             self.seq_loss = tf.reduce_sum(crossent) / tf.to_float(self.batch_size)
             tf.summary.scalar('seq_loss', self.seq_loss)
 

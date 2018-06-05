@@ -18,7 +18,7 @@ def run_epoch(itr, sess, model, feeder, evaluator, writer):
     feeder.prepare('train')
     nbatch = 0
     while not feeder.eof():
-        aids, qids, qv, st, kb = feeder.next()
+        aids, qids, qv, st, kb = feeder.next(32)
         feed = model.feed(aids, qids, qv, st, kb)
         summary, _, seq_loss, vector_loss, st_loss, loss, global_step, squeezed_logit, question_logit, answer_logit = sess.run(
             [

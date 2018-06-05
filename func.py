@@ -41,18 +41,18 @@ def pointer(encoder_state, decoder_state, hidden_dim, mask, scope='pointer'):
         return next_decoder_state, alpha
 
 
-def cross_entropy(logit, target, mask=None, pos_weight=1):
+def cross_entropy(logit, target, mask=None, pos_weight=1, neg_weight=1):
     if mask is None:
         mask = 1
     logit = tf.clip_by_value(logit, 1E-18, 1)
     loss_t = -target * tf.log(logit) * pos_weight * mask
-    loss_f = -(1-target) * tf.log(1-logit) * mask
+    loss_f = -(1-target) * tf.log(1-logit) * neg_weight * mask
     return loss_t + loss_f
 
 
-def sparse_cross_entropy(logit, target, mask=None, pos_weight=1):
+def sparse_cross_entropy(logit, target, mask=None, pos_weight=1, neg_weight=1):
     one_hot = tf.one_hot(target, tf.shape(logit)[-1], dtype=tf.float32)
-    loss = cross_entropy(logit, one_hot, mask, pos_weight)
+    loss = cross_entropy(logit, one_hot, mask, pos_weight, neg_weight)
     return loss
 
 

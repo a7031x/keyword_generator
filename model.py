@@ -107,14 +107,14 @@ class Model(object):
     def create_selfmatch(self):
         with tf.name_scope('selfmatch'), tf.variable_scope('selfmatch'):
             self_att, _ = func.dot_attention(self.encoder_output, self.encoder_output, self.mask, config.encoder_hidden_dim, self.input_keep_prob)
-            self.selfmatch, _ = func.rnn('gru', self_att, self.length, config.encoder_hidden_dim, 1, self.input_keep_prob)
-            tf.summary.histogram('self_attention/self_match', self.selfmatch)
+            selfmatch, _ = func.rnn('gru', self_att, self.length, config.encoder_hidden_dim, 1, self.input_keep_prob)
+            tf.summary.histogram('self_attention/self_match', selfmatch)
             self.ws_answer = tf.get_variable(name='ws_answer', shape=[config.encoder_hidden_dim, 1])
-            self.answer_logit = tf.einsum('aij,jk->aik', self.selfmatch, self.ws_answer)
+            self.answer_logit = tf.einsum('aij,jk->aik', selfmatch, self.ws_answer)
             self.answer_alpha = tf.sigmoid(self.answer_logit, name='answer_alpha')
             self.answer_logit = tf.squeeze(self.answer_logit, [-1])
             #self.answer_logit = tf.squeeze(self.answer_logit, [-1])
-            self.answer_vector = tf.reduce_sum(self.answer_alpha*self.selfmatch, 1)
+            self.answer_vector = tf.reduce_sum(self.answer_alpha*self.encoder_output, 1)
             tf.summary.histogram('self_attention/answer_logit', self.answer_logit)
             tf.summary.histogram('self_attention/answer_alpha', self.answer_alpha)
             tf.summary.histogram('self_attention/answer_vector', self.answer_vector)
@@ -124,7 +124,7 @@ class Model(object):
         with tf.variable_scope('decoder/output_projection'):
             output_layer = layers_core.Dense(self.question_vocab_size, use_bias=False, name='output_projection')
         with tf.name_scope('decoder'), tf.variable_scope('decoder') as decoder_scope:
-            memory = self.selfmatch
+            memory = self.encoder_output
             source_sequence_length = self.length
             encoder_state = self.encoder_state
             batch_size = self.batch_size

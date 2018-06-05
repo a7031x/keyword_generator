@@ -160,8 +160,8 @@ class Model(object):
         with tf.name_scope('seq_loss'):
             mask = tf.expand_dims(self.question_mask, -1)
             weight = mask * self.question_word_weight
-            logit = tf.nn.softmax(self.question_logit)
-            crossent = func.sparse_cross_entropy(logit, self.input_target_question, None) * weight
+            logit = tf.nn.softmax(self.question_logit[:,:self.max_question_len,:])
+            crossent = func.sparse_cross_entropy(logit, self.input_target_question) * weight
             self.seq_loss = tf.reduce_sum(crossent) / tf.to_float(self.batch_size)
             tf.summary.scalar('seq_loss', self.seq_loss)
 

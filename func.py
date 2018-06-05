@@ -53,7 +53,7 @@ def cross_entropy(logit, target, mask=None, pos_weight=1):
 def sparse_cross_entropy(logit, target, mask=None, pos_weight=1):
     one_hot = tf.one_hot(target, tf.shape(logit)[-1], dtype=tf.float32)
     loss = cross_entropy(logit, one_hot, mask, pos_weight)
-    return tf.reduce_sum(loss, axis=-1)
+    return loss
 
 
 def tensor_to_mask(value):

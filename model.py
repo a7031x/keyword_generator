@@ -168,7 +168,7 @@ class Model(object):
     def create_answer_tag_loss(self):
         with tf.name_scope('answer_tag_loss'):
             answer_loss = tf.nn.weighted_cross_entropy_with_logits(logits=self.answer_logit, targets=self.input_label_answer, pos_weight=3.0) * self.mask
-            self.answer_tag_loss = tf.reduce_sum(answer_loss)
+            self.answer_tag_loss = tf.reduce_mean(tf.reduce_sum(answer_loss, -1))
             tf.summary.scalar('answer_tag_loss', self.answer_tag_loss)
 
 

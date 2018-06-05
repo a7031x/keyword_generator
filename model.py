@@ -144,8 +144,8 @@ class Model(object):
 
     def create_loss(self):
         with tf.name_scope('loss'):
-            self.answer_loss = func.cross_entropy(tf.sigmoid(self.answer_logit), self.input_label_answer, self.mask, pos_weight=3.0)
-            self.question_vector_loss = func.cross_entropy(tf.sigmoid(self.question_logit), self.input_label_question_vector, None, pos_weight=self.question_word_weight)
+            self.answer_loss = tf.nn.weighted_cross_entropy_with_logits(logits=self.answer_logit, targets=self.input_label_answer, pos_weight=3.0) * self.mask
+            self.question_vector_loss = tf.nn.weighted_cross_entropy_with_logits(self.question_logit, self.input_label_question_vector, pos_weight=self.question_word_weight)
             self.answer_loss = tf.reduce_mean(tf.reduce_sum(self.answer_loss, -1))
             self.question_vector_loss = tf.reduce_mean(tf.reduce_sum(self.question_vector_loss, -1))
 
@@ -153,8 +153,9 @@ class Model(object):
             self.question_sequence_loss = func.sparse_cross_entropy(logit, self.input_label_question, tf.expand_dims(self.question_mask, -1), pos_weight=self.question_word_weight)
             self.question_sequence_loss = tf.reduce_sum(self.question_sequence_loss, name='question_sequence_loss', axis=-1)
             self.question_sequence_loss = tf.reduce_mean(self.question_sequence_loss)
+
             self.regularization_loss = self.calc_regularization_loss()
-            self.loss = self.answer_loss + self.question_vector_loss + self.question_sequence_loss + self.regularization_loss
+            self.loss = self.answer_loss + self.question_vector_loss + self.regularization_loss
             tf.summary.scalar('answer_loss', self.answer_loss)
             tf.summary.scalar('question_vector_loss', self.question_vector_loss)
             tf.summary.scalar('question_sequence_loss', self.question_sequence_loss)

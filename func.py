@@ -41,16 +41,16 @@ def pointer(encoder_state, decoder_state, hidden_dim, mask, scope='pointer'):
         return next_decoder_state, alpha
 
 
-def cross_entropy(logit, target, mask, pos_weight=1.0):
+def cross_entropy(logit, target, mask=None, pos_weight=1):
     if mask is None:
         mask = 1
-    logit = tf.clip_by_value(logit, 1E-18, 1-1E-18)
+    logit = tf.clip_by_value(logit, 1E-18, 1)
     loss_t = -target * tf.log(logit) * pos_weight * mask
     loss_f = -(1-target) * tf.log(1-logit) * mask
     return loss_t + loss_f
 
 
-def sparse_cross_entropy(logit, target, mask, pos_weight=1):
+def sparse_cross_entropy(logit, target, mask=None, pos_weight=1):
     one_hot = tf.one_hot(target, tf.shape(logit)[-1], dtype=tf.float32)
     loss = cross_entropy(logit, one_hot, mask, pos_weight)
     return tf.reduce_sum(loss, axis=-1)
@@ -116,7 +116,7 @@ def get_cell(rnn_type, hidden_size, layer_num=1, dropout_keep_prob=None):
         An RNN Cell
     """
     cells = []
-    for i in range(layer_num):
+    for _ in range(layer_num):
         if rnn_type.endswith('lstm'):
             cell = tc.rnn.LSTMCell(num_units=hidden_size, state_is_tuple=True)
         elif rnn_type.endswith('gru'):

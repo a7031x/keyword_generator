@@ -27,7 +27,7 @@ def run_epoch(itr, sess, model, feeder, evaluator, writer):
                 model.global_step,
                 model.squeezed_logit, model.question_logit, model.answer_logit
             ], feed_dict=feed)
-        qw = [id for id,v in enumerate(squeezed_logit[0]) if v > 0]
+        #qw = [id for id,v in enumerate(squeezed_logit[0]) if v > 0]
         predict_question = feeder.decode_logit(question_logit[0])
         writer.add_summary(summary, global_step=global_step)
         print('-----ITERATION {}, {}/{}, loss: {:>.4F} + {:>.4F} + {:>.4F}={:>.4F}'.format(itr, feeder.cursor, feeder.size, seq_loss, vector_loss, st_loss, loss))

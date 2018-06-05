@@ -93,7 +93,7 @@ class Model(object):
         with tf.name_scope('encoder'):
             fw_cell = rnn.create_rnn_cell('lstm', config.encoder_hidden_dim, config.num_encoder_rnn_layers, config.num_encoder_residual_layers, self.input_keep_prob)
             bw_cell = rnn.create_rnn_cell('lstm', config.encoder_hidden_dim, config.num_encoder_rnn_layers, config.num_encoder_residual_layers, self.input_keep_prob)
-            bi_output, bi_encoder_state = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell, self.emb, dtype=tf.float32, sequence_length=self.length, swap_memory=True)
+            bi_output, bi_encoder_state = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell, self.emb, dtype=tf.float32, sequence_length=self.length)
             self.encoder_output = tf.concat(bi_output, -1)
             encoder_state = []
             for layer_id in range(config.num_encoder_rnn_layers):
@@ -114,7 +114,7 @@ class Model(object):
             self.answer_alpha = tf.sigmoid(self.answer_logit, name='answer_alpha')
             self.answer_logit = tf.squeeze(self.answer_logit, [-1])
             #self.answer_logit = tf.squeeze(self.answer_logit, [-1])
-            self.answer_vector = tf.reduce_sum(self.answer_alpha*self.selfmatch, 1)
+            self.answer_vector = tf.reduce_sum(self.answer_alpha*self.encoder_output, 1)
             tf.summary.histogram('self_attention/answer_logit', self.answer_logit)
             tf.summary.histogram('self_attention/answer_alpha', self.answer_alpha)
             tf.summary.histogram('self_attention/answer_vector', self.answer_vector)
@@ -124,9 +124,8 @@ class Model(object):
         with tf.variable_scope('decoder/output_projection'):
             output_layer = layers_core.Dense(self.question_vocab_size, use_bias=False, name='output_projection')
         with tf.name_scope('decoder'), tf.variable_scope('decoder') as decoder_scope:
-            memory = self.selfmatch
+            memory = self.encoder_output
             source_sequence_length = self.length
-            encoder_state = self.encoder_state
             batch_size = self.batch_size
 
             attention_mechanism = ts.LuongAttention(config.decoder_hidden_dim, memory, source_sequence_length, scale=True)
@@ -137,30 +136,32 @@ class Model(object):
                 output_attention=True,
                 name='attention')
 
-            decoder_initial_state = cell.zero_state(batch_size, tf.float32).clone(cell_state=encoder_state)
+            decoder_initial_state = cell.zero_state(batch_size, tf.float32)
             #start_tokens = tf.fill([self.batch_size], config.SOS_ID)
             #target_input = tf.concat([tf.expand_dims(start_tokens, -1), self.input_label_question], 1)
             vector_input = tf.tile(tf.expand_dims(self.answer_vector, 1), [1, config.max_question_len, 1])
-            #decoder_emb = tf.nn.embedding_lookup(self.question_embedding, vector_inp)
             helper = ts.TrainingHelper(vector_input, tf.fill([self.batch_size], config.max_question_len))
             decoder = ts.BasicDecoder(cell, helper, decoder_initial_state)
-            output, self.final_context_state, _ = ts.dynamic_decode(decoder, swap_memory=True, scope=decoder_scope)
+            output, self.final_context_state, _ = ts.dynamic_decode(decoder, scope=decoder_scope)
             self.question_logit = output_layer(output.rnn_output)
             tf.summary.histogram('decoder/question_logit', self.question_logit)
 
 
-    def calc_regularization_loss(self):
-        loss = 0
-        for variable in tf.trainable_variables():
-            loss = tf.nn.l2_loss(variable) + loss
-        return loss * 0.0001
-
+    def create_regularization_loss(self):
+        with tf.name_scope('regularization_loss'):
+            loss = 0
+            for variable in tf.trainable_variables():
+                loss = tf.nn.l2_loss(variable) + loss
+            self.regularization_loss = loss * 0.0001
+            tf.summary.scalar('regularization_loss', self.regularization_loss)
+        
 
     def create_seq_loss(self):
         with tf.name_scope('seq_loss'):
-            crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=self.input_target_question, logits=self.question_logit[:,:self.max_question_len,:]) * self.question_mask
-            self.regularization_loss = self.calc_regularization_loss()
+            mask = tf.expand_dims(self.question_mask, -1)
+            weight = mask * self.question_word_weight
+            logit = tf.nn.softmax(self.question_logit)
+            crossent = func.sparse_cross_entropy(logit, self.input_target_question, None) * weight
             self.seq_loss = tf.reduce_sum(crossent) / tf.to_float(self.batch_size)
             tf.summary.scalar('seq_loss', self.seq_loss)
 
@@ -179,19 +180,19 @@ class Model(object):
             hardmax = ts.hardmax(question_logit)
             self.max_logit = hardmax * question_logit * mask
             self.squeezed_logit = tf.reduce_sum(self.max_logit, 1)
-            vector_weight = tf.cast(tf.reduce_sum(hardmax, 1) + self.input_label_question_vector > 0.0, tf.float32) * self.question_word_weight
+            vector_weight = tf.to_float(tf.reduce_sum(hardmax, 1) + self.input_label_question_vector > 0.0) * self.question_word_weight
             vector_loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_label_question_vector, logits=self.squeezed_logit) * vector_weight
             self.vector_loss = tf.reduce_mean(tf.reduce_sum(vector_loss, -1))
             tf.summary.scalar('vector_loss', self.vector_loss)
 
 
-    def create_loss(self):
-        self.create_answer_tag_loss()
-        self.create_vector_loss()
-        self.create_seq_loss()
+    def create_loss(self):      
         with tf.name_scope('loss'):
-            self.loss = self.vector_loss + self.seq_loss + self.answer_tag_loss
-            tf.summary.scalar('regularization_loss', self.regularization_loss)
+            self.create_answer_tag_loss()
+            self.create_vector_loss()
+            self.create_seq_loss()
+            self.create_regularization_loss()
+            self.loss = self.vector_loss + self.seq_loss + self.answer_tag_loss + self.regularization_loss
             tf.summary.scalar('loss', self.loss)
 
 
@@ -212,6 +213,7 @@ class Model(object):
                 print('MODEL LOADED.')
         else:
             sess.run(tf.global_variables_initializer())
+            print('MODEL INITIALIZED.')
 
 
     def save(self, sess):

@@ -155,7 +155,7 @@ if __name__ == '__main__':
     dataset = Dataset()
     feeder = TrainFeeder(dataset)
     feeder.prepare('dev')
-    aids, q, a, keep_prob = feeder.next()
+    aids, qids, q, a, keep_prob = feeder.next()
     for question, answer in zip(q, a):
         print('--------------------')
         qw = [id for id, flag in enumerate(question) if flag == 1]

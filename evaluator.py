@@ -38,13 +38,13 @@ class Evaluator(TrainFeeder):
     def predict(self, sess, model, answer, question):
         aids, qids, qv, av, kb = self.create_feed(answer, question)
         feed = model.feed([aids], [qids], [qv], [av], kb)
-        sample_id = sess.run(model.sample_id, feed_dict=feed)
-        qs = self.qids_to_sent(np.argmax(sample_id[0], axis=-1))
+        question_logit = sess.run(model.question_logit, feed_dict=feed)
+        predict_question = self.decode_logit(question_logit[0])
         print('==================================================')
         print('answer', ' '.join(answer))
         print('---------------------------------------------------')
         print('question', ' '.join(question))
-        print('predict question', qs)
+        print('predict question', predict_question)
         #print('question score', [v for _,v in qids])
         #print('answer score', ['{}:{:>.4f}'.format(w,x) for w,x in zip(answer, answer_logit[0])])
 

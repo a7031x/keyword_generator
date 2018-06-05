@@ -144,7 +144,7 @@ def dot_attention(value, memory, mask, weight_dim, keep_prob):
     alpha = softmax(coref, tf.expand_dims(mask, axis=1))#[batch, plen, qlen]
     #alpha = tf.sigmoid(coref) * tf.expand_dims(mask, axis=1)#[batch, plen, qlen]
     ct = tf.matmul(alpha, memory, name='ct')#[batch, plen, 500]
-    return ct
+    return ct, alpha
 
 
 def rnn_decode(rnn_type, batch_size, hidden_size, embedding, sos, eos, init_state, maximum_iterations):

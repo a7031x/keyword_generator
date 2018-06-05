@@ -1,6 +1,7 @@
 import config
 import utils
 import random
+import numpy as np
 
 class Dataset(object):
     def __init__(self):
@@ -58,6 +59,12 @@ class Feeder(object):
 
     def seq_tag(self, question, answer):
         return [1 if word in question else 0 for word in answer]
+
+
+    def decode_logit(self, logit):
+        ids = np.argmax(logit, -1)
+        sent = self.qids_to_sent(ids)
+        return sent
 
 
 class TrainFeeder(Feeder):
